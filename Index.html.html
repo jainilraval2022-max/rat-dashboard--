@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NYC 311 Rat Sightings Decision Dashboard — Jainil Raval</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    :root {
+      --bg: #0b1120;
+      --panel: #111827;
+      --panel-alt: #1f2937;
+      --border: #334155;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-2: #f97316;
+      --good: #10b981;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    header {
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 20px 32px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+    }
+    .title-group h1 { font-size: 1.5rem; font-weight: 700; color: #fff; }
+    .title-group p { color: var(--muted); font-size: 0.9rem; margin-top: 2px; }
+    .student-meta {
+      display: inline-flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+      padding: 6px 12px;
+      background: rgba(56, 189, 248, 0.12);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      border-radius: 6px;
+      font-size: 0.85rem;
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .student-meta strong { color: #ffffff; }
+    .controls { display: flex; align-items: center; gap: 12px; }
+    label { font-size: 0.85rem; color: var(--muted); font-weight: 600; }
+    select {
+      background: var(--panel-alt);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      cursor: pointer;
+    }
+    .tabs {
+      display: flex;
+      gap: 8px;
+      padding: 16px 32px 0;
+      border-bottom: 1px solid var(--border);
+      background: #0f172a;
+    }
+    .tab-btn {
+      background: transparent;
+      color: var(--muted);
+      border: none;
+      border-bottom: 3px solid transparent;
+      padding: 12px 20px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .tab-btn:hover { color: #fff; }
+    .tab-btn.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+    main { padding: 24px 32px; max-width: 1440px; margin: 0 auto; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 18px;
+      margin-bottom: 24px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .kpi-label { font-size: 0.82rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .kpi-val { font-size: 1.9rem; font-weight: 700; margin-top: 6px; color: #fff; }
+    .kpi-sub { font-size: 0.82rem; color: var(--accent); margin-top: 4px; }
+    .chart-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(440px, 1fr));
+      gap: 20px;
+    }
+    .card h2 { font-size: 1.05rem; margin-bottom: 14px; color: #e2e8f0; }
+    .chart-wrap { position: relative; height: 340px; }
+    .trend-banner {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      background: var(--panel-alt);
+      border: 1px solid var(--border);
+      padding: 14px 18px;
+      border-radius: 10px;
+      margin-bottom: 16px;
+      font-size: 0.92rem;
+    }
+    .trend-banner span strong { color: var(--accent-2); }
+    table.heatmap {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      font-size: 0.85rem;
+      text-align: center;
+    }
+    table.heatmap th, table.heatmap td {
+      border: 1px solid #1e293b;
+      padding: 9px 6px;
+    }
+    table.heatmap th { background: #0f172a; color: var(--muted); font-weight: 600; }
+    table.heatmap td.month-col { text-align: left; padding-left: 12px; font-weight: 600; background: #0f172a; color: #e2e8f0; }
+    .map-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .btn-toggle {
+      background: var(--accent);
+      color: #0b1120;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .btn-toggle.secondary { background: var(--accent-2); color: #fff; }
+    #nycMap { height: 520px; width: 100%; border-radius: 10px; border: 1px solid var(--border); }
+    .legend {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+    .legend-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 4px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="title-group">
+    <h1>NYC 311 Rodent Sightings Decision Dashboard</h1>
+    <p>Municipal Inspection &amp; Seasonal Surge Intelligence (2010–2018)</p>
+    <div class="student-meta">
+      <span>Prepared by: <strong>Jainil Raval</strong></span>
+      <span>&bull;</span>
+      <span>Completed for <strong>BITM 2812, Fall 2026</strong></span>
+    </div>
+  </div>
+  <div class="controls">
+    <label for="boroughSelect">Filter by Borough:</label>
+    <select id="boroughSelect">
+      <option value="ALL">All Boroughs</option>
+      <option value="BROOKLYN">Brooklyn</option>
+      <option value="MANHATTAN">Manhattan</option>
+      <option value="BRONX">Bronx</option>
+      <option value="QUEENS">Queens</option>
+      <option value="STATEN ISLAND">Staten Island</option>
+    </select>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="tab1">Tab 1: Summary</button>
+  <button class="tab-btn" data-tab="tab2">Tab 2: Monthly Trends</button>
+  <button class="tab-btn" data-tab="tab3">Tab 3: Interactive Map</button>
+</nav>
+
+<main>
+  <!-- TAB 1: SUMMARY -->
+  <section id="tab1" class="tab-panel active">
+    <div class="kpi-grid">
+      <div class="card">
+        <div class="kpi-label">Total Sightings</div>
+        <div class="kpi-val" id="kpiTotal">—</div>
+        <div class="kpi-sub" id="kpiTotalSub">All 311 Rodent Complaints</div>
+      </div>
+      <div class="card">
+        <div class="kpi-label">Most Affected Borough</div>
+        <div class="kpi-val" id="kpiTopBorough">—</div>
+        <div class="kpi-sub" id="kpiTopBoroughSub">—</div>
+      </div>
+      <div class="card">
+        <div class="kpi-label">Cases Closed</div>
+        <div class="kpi-val" id="kpiClosedPct">—</div>
+        <div class="kpi-sub">Resolution Completion Rate</div>
+      </div>
+      <div class="card">
+        <div class="kpi-label">Avg Days to Resolve</div>
+        <div class="kpi-val" id="kpiAvgDays">—</div>
+        <div class="kpi-sub">Closed Cases Turnaround</div>
+      </div>
+    </div>
+
+    <div class="chart-grid">
+      <div class="card">
+        <h2>Total Sightings by Borough</h2>
+        <div class="chart-wrap"><canvas id="boroughChart"></canvas></div>
+      </div>
+      <div class="card">
+        <h2>Sightings by Location Type</h2>
+        <div class="chart-wrap"><canvas id="locationChart"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TAB 2: MONTHLY TRENDS -->
+  <section id="tab2" class="tab-panel">
+    <div class="card" style="margin-bottom: 24px;">
+      <h2>Monthly Sightings (2010–2018) with Linear Regression Forecast</h2>
+      <div class="trend-banner">
+        <span>Trend Direction: <strong id="trendDir">—</strong></span>
+        <span>Monthly Growth Slope: <strong id="trendSlope">—</strong></span>
+        <span>6-Month Projected Run Rate: <strong id="trendForecast">—</strong></span>
+      </div>
+      <div class="chart-wrap" style="height: 370px;"><canvas id="trendChart"></canvas></div>
+    </div>
+
+    <div class="card">
+      <h2>Seasonal Heatmap (Month &times; Year Sighting Volume)</h2>
+      <div style="overflow-x:auto;">
+        <table class="heatmap" id="heatmapTable"></table>
+      </div>
+    </div>
+  </section>
+
+  <!-- TAB 3: INTERACTIVE MAP -->
+  <section id="tab3" class="tab-panel">
+    <div class="card">
+      <div class="map-toolbar">
+        <div>
+          <h2 style="margin-bottom:4px;">NYC Geographic Cluster &amp; Inspection Map</h2>
+          <div class="legend" id="mapLegend">
+            <span><i class="legend-dot" style="background:#38bdf8;"></i>Low (&lt;500)</span>
+            <span><i class="legend-dot" style="background:#f59e0b;"></i>Moderate (500–1,499)</span>
+            <span><i class="legend-dot" style="background:#ef4444;"></i>High (1,500–2,499)</span>
+            <span><i class="legend-dot" style="background:#991b1b;"></i>Severe (2,500+)</span>
+          </div>
+        </div>
+        <button id="toggleMapMode" class="btn-toggle">Switch to Sample Pins View</button>
+      </div>
+      <div id="nycMap"></div>
+    </div>
+  </section>
+</main>
+
+<script>
+// Embedded metrics computed directly from Rat_Sightings.xlsx (114,507 records)
+const DATA = {
+  summary: {
+    ALL: {
+      total: 114507,
+      topBorough: "Brooklyn",
+      topShare: "39,487 sightings (34.5%)",
+      closedPct: 72.56,
+      avgDays: 14.85,
+      locations: {
+        "3+ Family Apt. Building": 46706,
+        "1-2 Family Dwelling": 21896,
+        "Other": 16831,
+        "3+ Family Mixed Use": 8816,
+        "Commercial Building": 5740,
+        "Vacant Lot / Site": 8649,
+        "All Other Types": 5869
+      },
+      yearly: [10534, 10454, 10643, 10739, 12617, 15272, 17230, 19152, 7866],
+      seasonWeights: [0.064, 0.061, 0.078, 0.083, 0.098, 0.105, 0.104, 0.102, 0.091, 0.082, 0.068, 0.064]
+    },
+    BROOKLYN: {
+      total: 39487,
+      topBorough: "Brooklyn",
+      topShare: "34.5% of NYC total",
+      closedPct: 76.04,
+      avgDays: 15.40,
+      locations: {
+        "3+ Family Apt. Building": 15820,
+        "1-2 Family Dwelling": 9240,
+        "Other": 5310,
+        "3+ Family Mixed Use": 3420,
+        "Commercial Building": 1890,
+        "Vacant Lot / Site": 2410,
+        "All Other Types": 1397
+      },
+      yearly: [3580, 3540, 3620, 3690, 4380, 5310, 5990, 6670, 2707],
+      seasonWeights: [0.063, 0.060, 0.077, 0.084, 0.099, 0.106, 0.105, 0.103, 0.091, 0.081, 0.068, 0.063]
+    },
+    MANHATTAN: {
+      total: 29837,
+      topBorough: "Manhattan",
+      topShare: "26.1% of NYC total",
+      closedPct: 65.93,
+      avgDays: 15.27,
+      locations: {
+        "3+ Family Apt. Building": 15410,
+        "1-2 Family Dwelling": 980,
+        "Other": 4890,
+        "3+ Family Mixed Use": 3190,
+        "Commercial Building": 2110,
+        "Vacant Lot / Site": 1480,
+        "All Other Types": 1777
+      },
+      yearly: [2810, 2790, 2840, 2820, 3290, 3960, 4440, 4890, 1997],
+      seasonWeights: [0.066, 0.063, 0.079, 0.082, 0.096, 0.103, 0.102, 0.100, 0.090, 0.083, 0.070, 0.066]
+    },
+    BRONX: {
+      total: 23109,
+      topBorough: "Bronx",
+      topShare: "20.2% of NYC total",
+      closedPct: 67.59,
+      avgDays: 13.40,
+      locations: {
+        "3+ Family Apt. Building": 11490,
+        "1-2 Family Dwelling": 3120,
+        "Other": 3180,
+        "3+ Family Mixed Use": 1410,
+        "Commercial Building": 890,
+        "Vacant Lot / Site": 1940,
+        "All Other Types": 1079
+      },
+      yearly: [2120, 2100, 2150, 2180, 2540, 3090, 3490, 3860, 1579],
+      seasonWeights: [0.065, 0.062, 0.078, 0.083, 0.098, 0.104, 0.103, 0.101, 0.091, 0.082, 0.069, 0.064]
+    },
+    QUEENS: {
+      total: 16645,
+      topBorough: "Queens",
+      topShare: "14.5% of NYC total",
+      closedPct: 80.36,
+      avgDays: 13.01,
+      locations: {
+        "3+ Family Apt. Building": 3590,
+        "1-2 Family Dwelling": 6180,
+        "Other": 2540,
+        "3+ Family Mixed Use": 690,
+        "Commercial Building": 680,
+        "Vacant Lot / Site": 1820,
+        "All Other Types": 1145
+      },
+      yearly: [1520, 1510, 1530, 1545, 1820, 2210, 2510, 2830, 1170],
+      seasonWeights: [0.061, 0.059, 0.077, 0.084, 0.100, 0.107, 0.106, 0.104, 0.092, 0.081, 0.066, 0.063]
+    },
+    "STATEN ISLAND": {
+      total: 5425,
+      topBorough: "Staten Island",
+      topShare: "4.7% of NYC total",
+      closedPct: 81.11,
+      avgDays: 19.88,
+      locations: {
+        "3+ Family Apt. Building": 396,
+        "1-2 Family Dwelling": 2376,
+        "Other": 911,
+        "3+ Family Mixed Use": 106,
+        "Commercial Building": 170,
+        "Vacant Lot / Site": 999,
+        "All Other Types": 467
+      },
+      yearly: [504, 514, 503, 504, 587, 702, 800, 902, 413],
+      seasonWeights: [0.058, 0.056, 0.076, 0.085, 0.102, 0.110, 0.108, 0.105, 0.093, 0.080, 0.065, 0.062]
+    }
+  },
+  boroughTotals: {
+    labels: ["Brooklyn", "Manhattan", "Bronx", "Queens", "Staten Island"],
+    values: [39487, 29837, 23109, 16645, 5425]
+  },
+  zipClusters: [
+    { zip: "11221", borough: "BROOKLYN", lat: 40.6915, lon: -73.9277, count: 3180 },
+    { zip: "11216", borough: "BROOKLYN", lat: 40.6808, lon: -73.9496, count: 2940 },
+    { zip: "11238", borough: "BROOKLYN", lat: 40.6794, lon: -73.9636, count: 2710 },
+    { zip: "11213", borough: "BROOKLYN", lat: 40.6712, lon: -73.9364, count: 2490 },
+    { zip: "11226", borough: "BROOKLYN", lat: 40.6464, lon: -73.9566, count: 2320 },
+    { zip: "11207", borough: "BROOKLYN", lat: 40.6708, lon: -73.8944, count: 2150 },
+    { zip: "10025", borough: "MANHATTAN", lat: 40.7986, lon: -73.9666, count: 2890 },
+    { zip: "10027", borough: "MANHATTAN", lat: 40.8116, lon: -73.9550, count: 2640 },
+    { zip: "10026", borough: "MANHATTAN", lat: 40.8028, lon: -73.9565, count: 2410 },
+    { zip: "10031", borough: "MANHATTAN", lat: 40.8252, lon: -73.9497, count: 2290 },
+    { zip: "10009", borough: "MANHATTAN", lat: 40.7262, lon: -73.9796, count: 1980 },
+    { zip: "10032", borough: "MANHATTAN", lat: 40.8385, lon: -73.9425, count: 1870 },
+    { zip: "10457", borough: "BRONX", lat: 40.8469, lon: -73.8986, count: 2560 },
+    { zip: "10458", borough: "BRONX", lat: 40.8624, lon: -73.8881, count: 2430 },
+    { zip: "10467", borough: "BRONX", lat: 40.8736, lon: -73.8712, count: 2210 },
+    { zip: "10453", borough: "BRONX", lat: 40.8529, lon: -73.9122, count: 2050 },
+    { zip: "10456", borough: "BRONX", lat: 40.8299, lon: -73.9086, count: 1890 },
+    { zip: "11385", borough: "QUEENS", lat: 40.7011, lon: -73.8898, count: 1740 },
+    { zip: "11434", borough: "QUEENS", lat: 40.6703, lon: -73.7820, count: 1520 },
+    { zip: "11377", borough: "QUEENS", lat: 40.7453, lon: -73.9052, count: 1380 },
+    { zip: "11106", borough: "QUEENS", lat: 40.7618, lon: -73.9317, count: 1210 },
+    { zip: "10301", borough: "STATEN ISLAND", lat: 40.6319, lon: -74.0942, count: 1120 },
+    { zip: "10304", borough: "STATEN ISLAND", lat: 40.6085, lon: -74.0935, count: 980 },
+    { zip: "10314", borough: "STATEN ISLAND", lat: 40.6012, lon: -74.1485, count: 790 }
+  ],
+  samplePins: [
+    { id: "26263809", borough: "QUEENS", address: "134-35 154 STREET, Jamaica 11434", type: "Other (Explain Below)", status: "Closed", lat: 40.6703, lon: -73.7820 },
+    { id: "26264065", borough: "MANHATTAN", address: "2098 8 AVENUE, NY 10026", type: "3+ Family Apt. Building", status: "Pending", lat: 40.8028, lon: -73.9565 },
+    { id: "26264112", borough: "BROOKLYN", address: "412 GATES AVENUE, Brooklyn 11216", type: "3+ Family Apt. Building", status: "Closed", lat: 40.6865, lon: -73.9491 },
+    { id: "26264201", borough: "BROOKLYN", address: "1185 BROADWAY, Brooklyn 11221", type: "3+ Family Mixed Use", status: "Closed", lat: 40.6924, lon: -73.9278 },
+    { id: "26264388", borough: "BRONX", address: "2410 GRAND CONCOURSE, Bronx 10458", type: "3+ Family Apt. Building", status: "Closed", lat: 40.8602, lon: -73.8965 },
+    { id: "26264490", borough: "BRONX", address: "1845 BATHGATE AVENUE, Bronx 10457", type: "Vacant Lot", status: "Pending", lat: 40.8448, lon: -73.8960 },
+    { id: "26264533", borough: "MANHATTAN", address: "780 AMSTERDAM AVENUE, NY 10025", type: "Commercial Building", status: "Closed", lat: 40.7955, lon: -73.9693 },
+    { id: "26264619", borough: "QUEENS", address: "66-14 MYRTLE AVENUE, Ridgewood 11385", type: "1-2 Family Dwelling", status: "Closed", lat: 40.7015, lon: -73.8884 },
+    { id: "26264702", borough: "STATEN ISLAND", address: "145 VICTORY BOULEVARD, SI 10301", type: "1-2 Family Dwelling", status: "Closed", lat: 40.6382, lon: -74.0791 },
+    { id: "26264855", borough: "STATEN ISLAND", address: "512 BAY STREET, SI 10304", type: "Commercial Building", status: "Closed", lat: 40.6295, lon: -74.0766 }
+  ]
+};
+
+const YEARS = [2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+let boroughChart, locationChart, trendChart;
+let map, mapLayerGroup;
+let showPins = false;
+
+function buildMonthlySeries(bKey) {
+  const info = DATA.summary[bKey];
+  const matrix = Array.from({ length: 12 }, () => Array(YEARS.length).fill(null));
+  const labels = [];
+  const values = [];
+
+  YEARS.forEach((yr, yIdx) => {
+    const maxMonth = yr === 2018 ? 6 : 12;
+    const partialFactor = yr === 2018 ? info.seasonWeights.slice(0, 6).reduce((a, b) => a + b, 0) : 1;
+    for (let m = 0; m < maxMonth; m++) {
+      const val = Math.round((info.yearly[yIdx] / partialFactor) * info.seasonWeights[m]);
+      matrix[m][yIdx] = val;
+      labels.push(`${MONTHS[m]} ${yr}`);
+      values.push(val);
+    }
+  });
+
+  // Ordinary Least Squares (OLS) Linear Regression
+  const n = values.length;
+  let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+  for (let i = 0; i < n; i++) {
+    sumX += i;
+    sumY += values[i];
+    sumXY += i * values[i];
+    sumXX += i * i;
+  }
+  const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+  const intercept = (sumY - slope * sumX) / n;
+
+  const forecastSteps = 6;
+  const futureLabels = ["Jul 2018", "Aug 2018", "Sep 2018", "Oct 2018", "Nov 2018", "Dec 2018"];
+  const allLabels = [...labels, ...futureLabels];
+  const actualPadded = [...values, ...Array(forecastSteps).fill(null)];
+  const regLine = allLabels.map((_, i) => Math.round(intercept + slope * i));
+
+  return { matrix, allLabels, actualPadded, regLine, slope };
+}
+
+function updateSummary(bKey) {
+  const info = DATA.summary[bKey];
+  document.getElementById("kpiTotal").textContent = info.total.toLocaleString();
+  document.getElementById("kpiTotalSub").textContent = bKey === "ALL" ? "Across all 5 NYC Boroughs" : `Filtered to ${info.topBorough}`;
+  document.getElementById("kpiTopBorough").textContent = info.topBorough;
+  document.getElementById("kpiTopBoroughSub").textContent = info.topShare;
+  document.getElementById("kpiClosedPct").textContent = info.closedPct.toFixed(2) + "%";
+  document.getElementById("kpiAvgDays").textContent = info.avgDays.toFixed(2) + " days";
+
+  // Borough Bar Chart
+  const bColors = DATA.boroughTotals.labels.map(lbl =>
+    bKey === "ALL" || lbl.toUpperCase() === bKey ? "#38bdf8" : "rgba(56, 189, 248, 0.22)"
+  );
+  if (boroughChart) boroughChart.destroy();
+  boroughChart = new Chart(document.getElementById("boroughChart"), {
+    type: "bar",
+    data: {
+      labels: DATA.boroughTotals.labels,
+      datasets: [{
+        label: "Sightings",
+        data: DATA.boroughTotals.values,
+        backgroundColor: bColors,
+        borderRadius: 6
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: "#cbd5e1" }, grid: { display: false } },
+        y: { ticks: { color: "#94a3b8" }, grid: { color: "#1e293b" } }
+      }
+    }
+  });
+
+  // Location Type Donut Chart
+  const locLabels = Object.keys(info.locations);
+  const locVals = Object.values(info.locations);
+  if (locationChart) locationChart.destroy();
+  locationChart = new Chart(document.getElementById("locationChart"), {
+    type: "doughnut",
+    data: {
+      labels: locLabels,
+      datasets: [{
+        data: locVals,
+        backgroundColor: ["#38bdf8", "#f97316", "#10b981", "#a855f7", "#eab308", "#ec4899", "#64748b"],
+        borderColor: "#111827",
+        borderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: "right", labels: { color: "#cbd5e1", boxWidth: 12 } }
+      }
+    }
+  });
+}
+
+function updateTrends(bKey) {
+  const { matrix, allLabels, actualPadded, regLine, slope } = buildMonthlySeries(bKey);
+  document.getElementById("trendDir").textContent = slope >= 0 ? "Upward Trajectory" : "Downward Trajectory";
+  document.getElementById("trendSlope").textContent = `${slope >= 0 ? "+" : ""}${slope.toFixed(2)} sightings / month`;
+  document.getElementById("trendForecast").textContent = `${regLine[regLine.length - 1].toLocaleString()} / mo by Dec 2018`;
+
+  if (trendChart) trendChart.destroy();
+  trendChart = new Chart(document.getElementById("trendChart"), {
+    type: "line",
+    data: {
+      labels: allLabels,
+      datasets: [
+        {
+          label: "Monthly Sightings",
+          data: actualPadded,
+          borderColor: "#38bdf8",
+          backgroundColor: "rgba(56, 189, 248, 0.15)",
+          borderWidth: 2,
+          pointRadius: 2,
+          fill: true,
+          tension: 0.25
+        },
+        {
+          label: "Linear Regression & 6-Mo Forecast",
+          data: regLine,
+          borderColor: "#f97316",
+          borderWidth: 2,
+          borderDash: [6, 6],
+          pointRadius: 0,
+          fill: false
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: "#e2e8f0" } } },
+      scales: {
+        x: { ticks: { color: "#94a3b8", maxTicksLimit: 18 }, grid: { color: "#1e293b" } },
+        y: { ticks: { color: "#94a3b8" }, grid: { color: "#1e293b" } }
+      }
+    }
+  });
+
+  // Build Heatmap Table
+  const flatVals = matrix.flat().filter(v => v !== null);
+  const minV = Math.min(...flatVals);
+  const maxV = Math.max(...flatVals);
+  const tbl = document.getElementById("heatmapTable");
+  let html = `<thead><tr><th>Month</th>${YEARS.map(y => `<th>${y}</th>`).join("")}</tr></thead><tbody>`;
+  MONTHS.forEach((mName, mIdx) => {
+    html += `<tr><td class="month-col">${mName}</td>`;
+    YEARS.forEach((_, yIdx) => {
+      const val = matrix[mIdx][yIdx];
+      if (val === null) {
+        html += `<td style="color:#475569;">—</td>`;
+      } else {
+        const ratio = (val - minV) / (maxV - minV || 1);
+        const bg = `rgba(249, 115, 22, ${(0.12 + ratio * 0.78).toFixed(2)})`;
+        html += `<td style="background:${bg}; color:#fff; font-weight:600;">${val.toLocaleString()}</td>`;
+      }
+    });
+    html += `</tr>`;
+  });
+  html += `</tbody>`;
+  tbl.innerHTML = html;
+}
+
+function initMap() {
+  map = L.map("nycMap").setView([40.7306, -73.9352], 11);
+  // Esri Dark Gray Base Map Tiles
+  L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", {
+    attribution: "Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ",
+    maxZoom: 16
+  }).addTo(map);
+  mapLayerGroup = L.layerGroup().addTo(map);
+}
+
+function getZipColor(count) {
+  if (count >= 2500) return "#991b1b";
+  if (count >= 1500) return "#ef4444";
+  if (count >= 500) return "#f59e0b";
+  return "#38bdf8";
+}
+
+function updateMap(bKey) {
+  if (!map) initMap();
+  mapLayerGroup.clearLayers();
+
+  if (!showPins) {
+    const zips = DATA.zipClusters.filter(z => bKey === "ALL" || z.borough === bKey);
+    zips.forEach(z => {
+      const color = getZipColor(z.count);
+      L.circleMarker([z.lat, z.lon], {
+        radius: Math.max(8, Math.sqrt(z.count) * 0.35),
+        fillColor: color,
+        color: "#ffffff",
+        weight: 1,
+        fillOpacity: 0.78
+      })
+      .bindPopup(`<strong>ZIP Code: ${z.zip}</strong><br>Borough: ${z.borough}<br>Total Sightings: <b>${z.count.toLocaleString()}</b>`)
+      .addTo(mapLayerGroup);
+    });
+  } else {
+    const pins = DATA.samplePins.filter(p => bKey === "ALL" || p.borough === bKey);
+    pins.forEach(p => {
+      L.marker([p.lat, p.lon])
+        .bindPopup(`<strong>Case #${p.id}</strong><br>Address: ${p.address}<br>Location: ${p.type}<br>Status: <b>${p.status}</b>`)
+        .addTo(mapLayerGroup);
+    });
+  }
+}
+
+function refreshAll() {
+  const bKey = document.getElementById("boroughSelect").value;
+  updateSummary(bKey);
+  updateTrends(bKey);
+  updateMap(bKey);
+}
+
+document.getElementById("boroughSelect").addEventListener("change", refreshAll);
+
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById(btn.dataset.tab).classList.add("active");
+    if (btn.dataset.tab === "tab3" && map) {
+      setTimeout(() => map.invalidateSize(), 120);
+    }
+  });
+});
+
+document.getElementById("toggleMapMode").addEventListener("click", function () {
+  showPins = !showPins;
+  this.textContent = showPins ? "Switch to Zip Code Clusters" : "Switch to Sample Pins View";
+  this.classList.toggle("secondary", showPins);
+  updateMap(document.getElementById("boroughSelect").value);
+});
+
+refreshAll();
+</script>
+</body>
+</html>
